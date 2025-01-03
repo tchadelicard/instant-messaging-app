@@ -75,32 +75,26 @@ func Login(c *fiber.Ctx) error {
 			"error": "Username is required",
 		})
 	}
-	if req.Password == "" {
+	if len(req.Password) < 6 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Password is required",
+			"error": "Password must be at least 6 characters long",
 		})
 	}
 
-	// Authenticate the user and get a token
-	token, err := services.AuthenticateUser(req.Username, req.Password)
+	// Generate a UUID for WebSocket tracking
+	uuid := utils.GenerateUUID()
+
+	// Publish the registration request to RabbitMQ
+	err := services.PublishLoginRequest(uuid, req.Username, req.Password)
 	if err != nil {
-		if err.Error() == "user not found" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "User not found",
-			})
-		}
-		if err.Error() == "invalid password" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid password",
-			})
-		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
+			"error": "Failed to process login",
 		})
 	}
 
-	// Success response with token
-	return c.JSON(fiber.Map{
-		"token": token,
+	// Respond with the UUID for WebSocket tracking
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"uuid": uuid,
+		"message": "Login request received. Use the UUID to track status via WebSocket.",
 	})
 }

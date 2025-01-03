@@ -1,65 +1,98 @@
 import React, { useState, useEffect } from "react";
 import axiosInstance from "../api/axiosInstance";
 import { useNavigate } from "react-router-dom";
-import { User } from "../types";
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const validateToken = async () => {
-      const token = localStorage.getItem("token");
+    const token = localStorage.getItem("token");
 
-      if (token) {
-        try {
-          // Validate token by fetching user data
-          await axiosInstance.get<User>("/users/self", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          // If valid, redirect to chat
+    if (token) {
+      axiosInstance
+        .get("/users/self", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((response) => {
+          const { id } = response.data;
+          localStorage.setItem("user_id", id.toString());
           navigate("/chat");
-        } catch {
-          // If token is invalid, clear it
+        })
+        .catch(() => {
           localStorage.removeItem("token");
           localStorage.removeItem("user_id");
           localStorage.removeItem("username");
-        }
-      }
-    };
-
-    validateToken();
+        });
+    }
   }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+    setError("");
+
     try {
-      // Fetch and save token in localStorage
-      const loginResponse = await axiosInstance.post("/login", {
+      // Call the login API to get the UUID
+      const response = await axiosInstance.post("/login", {
         username,
         password,
       });
-      localStorage.setItem("token", loginResponse.data.token);
 
-      axiosInstance.defaults.headers.common[
-        "Authorization"
-      ] = `Bearer ${loginResponse.data.token}`;
+      const { uuid } = response.data;
 
-      // Fetch user data and save in localStorage
-      const userReponse = await axiosInstance.get<User>("/users/self");
+      // Establish WebSocket connection using the UUID
+      const ws = new WebSocket(`ws://localhost:8080/ws/${uuid}`); // Replace with your WebSocket endpoint
 
-      localStorage.setItem("user_id", userReponse.data.id.toString());
-      localStorage.setItem("username", userReponse.data.username);
+      ws.onopen = () => {
+        console.log("WebSocket connection opened for UUID:", uuid);
+      };
 
-      // Redirect to the chat page
-      navigate("/chat");
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.success) {
+          // Save the token and set the default Authorization header
+          localStorage.setItem("token", data.token);
+          axiosInstance.defaults.headers.common[
+            "Authorization"
+          ] = `Bearer ${data.token}`;
+
+          try {
+            // Fetch user_id from /users/self
+            const selfResponse = await axiosInstance.get("/users/self");
+            const { id } = selfResponse.data;
+
+            // Store user_id and username in localStorage
+            localStorage.setItem("user_id", id.toString());
+            localStorage.setItem("username", username);
+
+            navigate("/chat");
+          } catch (err) {
+            setError("Failed to fetch user information");
+          }
+        } else {
+          setError(data.message || "Login failed");
+        }
+
+        ws.close();
+        setLoading(false);
+      };
+
+      ws.onerror = () => {
+        setError("WebSocket error occurred");
+        setLoading(false);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed");
+      };
     } catch (err: any) {
       setError(err.response?.data?.error || "Something went wrong");
+      setLoading(false);
     }
   };
 
@@ -87,6 +120,7 @@ const Login: React.FC = () => {
               onChange={(e) => setUsername(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-md"
               placeholder="Votre nom d'utilisateur"
+              disabled={loading}
             />
           </div>
           <div className="mb-4">
@@ -100,18 +134,21 @@ const Login: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-md"
               placeholder="Votre mot de passe"
+              disabled={loading}
             />
           </div>
           <button
             type="submit"
             className="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600"
+            disabled={loading}
           >
-            Se connecter
+            {loading ? "Connexion..." : "Se connecter"}
           </button>
         </form>
         <button
           onClick={() => navigate("/")}
           className="mt-4 w-full bg-gray-300 text-gray-700 py-2 rounded-md hover:bg-gray-400"
+          disabled={loading}
         >
           Retour à l'accueil
         </button>

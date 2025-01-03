@@ -6,28 +6,54 @@ const Register: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
-      // If token exists, redirect to chat
       navigate("/chat");
     }
   }, [navigate]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
     try {
-      await axiosInstance.post("/register", {
+      // Send registration request
+      const response = await axiosInstance.post("/register", {
         username,
         password,
       });
 
-      // Redirect to login page after successful registration
-      navigate("/login");
+      const { uuid } = response.data;
+
+      // Open WebSocket connection
+      const ws = new WebSocket(`ws://localhost:8080/ws/${uuid}`);
+      ws.onopen = () => console.log("WebSocket connection established");
+      ws.onmessage = (event) => {
+        const message = event.data;
+        setSuccess(message);
+        setLoading(false);
+        ws.close();
+
+        // Redirect to login page after successful registration
+        if (message === "Registration successful") {
+          setTimeout(() => navigate("/login"), 2000);
+        }
+      };
+      ws.onerror = () => {
+        setError("WebSocket error occurred");
+        setLoading(false);
+      };
+      ws.onclose = () => console.log("WebSocket connection closed");
     } catch (err: any) {
       setError(err.response?.data?.error || "Something went wrong");
+      setLoading(false);
     }
   };
 
@@ -41,6 +67,12 @@ const Register: React.FC = () => {
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
             <strong className="font-bold">Erreur: </strong>
             <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">
+            <strong className="font-bold">Succès: </strong>
+            <span className="block sm:inline">{success}</span>
           </div>
         )}
         <form onSubmit={handleRegister}>
@@ -72,9 +104,12 @@ const Register: React.FC = () => {
           </div>
           <button
             type="submit"
-            className="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600"
+            className={`w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 ${
+              loading ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            disabled={loading}
           >
-            S'inscrire
+            {loading ? "En cours..." : "S'inscrire"}
           </button>
         </form>
         <button

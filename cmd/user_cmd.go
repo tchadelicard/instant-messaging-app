@@ -9,12 +9,10 @@ import (
 
 	"instant-messaging-app/config"
 	"instant-messaging-app/user/handlers"
-	"instant-messaging-app/utils"
 
 	"github.com/joho/godotenv"
 )
 
-// StartUserService starts the UserService daemon
 func StartUserService() {
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
@@ -26,19 +24,25 @@ func StartUserService() {
 
 	log.Println("Starting UserService daemon...")
 
-	// Generate a unique queue name for this instance
-	instanceQueue := "user_service_" + utils.GenerateUniqueID()
-
 	// Setup RabbitMQ connection and channel
-	rabbitConn, rabbitCh := config.SetupRabbitMQ()
-	defer rabbitConn.Close()
-	defer rabbitCh.Close()
+	config.SetupRabbitMQ()
+	defer config.CleanupRabbitMQ()
 
-	// Initialize fan-out bindings for the UserService
-	config.InitFanOutRabbitMQBindings(rabbitCh, instanceQueue, "user_fanout_exchange")
+	// Declare the direct exchange for registration and login
+	config.InitDirectRabbitMQExchange("user_direct_exchange")
 
-	// Setup notification exchange for sending registration status
-	config.InitDirectRabbitMQExchange(rabbitCh, "notification_exchange")
+	// Declare and bind the registration queue
+	registrationQueue := "user_service_registration_queue"
+	config.InitQueue(registrationQueue)
+	config.BindQueueToExchange(registrationQueue, "user_direct_exchange", "registration")
+
+	// Declare and bind the login queue
+	loginQueue := "user_service_login_queue"
+	config.InitQueue(loginQueue)
+	config.BindQueueToExchange(loginQueue, "user_direct_exchange", "login")
+
+	// Declare the notification exchange
+	config.InitDirectRabbitMQExchange("notification_exchange")
 
 	// Create a context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -53,7 +57,10 @@ func StartUserService() {
 	}()
 
 	// Start consuming registration requests
-	go handlers.ConsumeRegistrationQueue(ctx, rabbitCh, instanceQueue, "notification_exchange")
+	go handlers.ConsumeRegistrationQueue(ctx, registrationQueue, "notification_exchange")
+
+	// Start consuming login requests
+	go handlers.ConsumeLoginQueue(ctx, loginQueue, "notification_exchange")
 
 	// Block until context is canceled
 	<-ctx.Done()

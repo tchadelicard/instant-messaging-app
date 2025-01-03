@@ -8,8 +8,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+var RabbitMQConn *amqp.Connection
+var RabbitMQCh *amqp.Channel
 
-func SetupRabbitMQ() (*amqp.Connection, *amqp.Channel) {
+// SetupRabbitMQ initializes the global RabbitMQ connection and channel
+func SetupRabbitMQ() {
 	addr := fmt.Sprintf(
 		"amqp://%s:%s@%s:%s",
 		os.Getenv("RABBITMQ_USER"),
@@ -20,67 +23,54 @@ func SetupRabbitMQ() (*amqp.Connection, *amqp.Channel) {
 
 	fmt.Println(addr)
 
-	conn, err := amqp.Dial(addr)
+	var err error
+	RabbitMQConn, err = amqp.Dial(addr)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}
 
-	ch, err := conn.Channel()
+	RabbitMQCh, err = RabbitMQConn.Channel()
 	if err != nil {
 		log.Fatalf("Failed to open RabbitMQ channel: %v", err)
 	}
 
 	log.Println("RabbitMQ connection and channel initialized.")
-	return conn, ch
 }
 
-// InitFanOutRabbitMQBindings sets up a fan-out exchange for a queue
-func InitFanOutRabbitMQBindings(ch *amqp.Channel, queueName, exchangeName string) {
-	// Declare fan-out exchange
-	err := ch.ExchangeDeclare(
-		exchangeName,
-		"fanout",
-		true,  // Durable
-		false, // Auto-deleted
-		false, // Internal
-		false, // No-wait
-		nil,   // Arguments
-	)
-	if err != nil {
-		log.Fatalf("Failed to declare exchange: %v", err)
-	}
-
-	// Declare a unique queue
-	q, err := ch.QueueDeclare(
-		queueName,
-		true,  // Durable
-		false, // Delete when unused
-		true,  // Exclusive
-		false, // No-wait
-		nil,   // Arguments
+// InitQueue sets up a durable queue
+func InitQueue(queueName string) {
+	_, err := RabbitMQCh.QueueDeclare(
+		queueName, // Queue name
+		true,      // Durable
+		false,     // Auto-delete
+		false,     // Exclusive
+		false,     // No-wait
+		nil,       // Arguments
 	)
 	if err != nil {
 		log.Fatalf("Failed to declare queue: %v", err)
 	}
+	log.Printf("Queue declared: %s", queueName)
+}
 
-	// Bind the queue to the exchange
-	err = ch.QueueBind(
-		q.Name,     // Queue name
-		"",         // Routing key (not used in fan-out)
-		exchangeName,
+// BindQueueToExchange binds a queue to an exchange with a specific routing key
+func BindQueueToExchange(queueName, exchangeName, routingKey string) {
+	err := RabbitMQCh.QueueBind(
+		queueName,    // Queue name
+		routingKey,   // Routing key
+		exchangeName, // Exchange name
 		false,
 		nil,
 	)
 	if err != nil {
-		log.Fatalf("Failed to bind queue: %v", err)
+		log.Fatalf("Failed to bind queue %s to exchange %s: %v", queueName, exchangeName, err)
 	}
-
-	log.Printf("Fan-out bindings initialized for queue: %s", q.Name)
+	log.Printf("Queue %s bound to exchange %s with routing key %s", queueName, exchangeName, routingKey)
 }
 
 // InitDirectRabbitMQExchange sets up a direct exchange for notifications
-func InitDirectRabbitMQExchange(ch *amqp.Channel, exchangeName string) {
-	err := ch.ExchangeDeclare(
+func InitDirectRabbitMQExchange(exchangeName string) {
+	err := RabbitMQCh.ExchangeDeclare(
 		exchangeName, // Exchange name
 		"direct",     // Type
 		true,         // Durable
@@ -90,7 +80,39 @@ func InitDirectRabbitMQExchange(ch *amqp.Channel, exchangeName string) {
 		nil,          // Arguments
 	)
 	if err != nil {
-		log.Fatalf("Failed to declare exchange: %v", err)
+		log.Fatalf("Failed to declare direct exchange %s: %v", exchangeName, err)
 	}
 	log.Printf("Declared RabbitMQ direct exchange: %s", exchangeName)
+}
+
+// CleanupRabbitMQ closes the RabbitMQ connection and channel
+func CleanupRabbitMQ() {
+	if RabbitMQCh != nil {
+		if err := RabbitMQCh.Close(); err != nil {
+			log.Printf("Failed to close RabbitMQ channel: %v", err)
+		}
+	}
+	if RabbitMQConn != nil {
+		if err := RabbitMQConn.Close(); err != nil {
+			log.Printf("Failed to close RabbitMQ connection: %v", err)
+		}
+	}
+	log.Println("RabbitMQ connection and channel closed.")
+}
+
+// queueExists checks if a RabbitMQ queue exists
+func QueueExists(queueName string) bool {
+	_, err := RabbitMQCh.QueueDeclarePassive(
+		queueName, // Queue name
+		true,      // Durable
+		true,      // Auto-delete
+		false,     // Exclusive
+		false,     // No-wait
+		nil,       // Arguments
+	)
+	if err != nil {
+		log.Printf("Queue %s does not exist: %v", queueName, err)
+		return false
+	}
+	return true
 }

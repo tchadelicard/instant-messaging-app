@@ -13,7 +13,7 @@ import (
 )
 
 // ConsumeRegistrationQueue listens to registration requests and processes them
-func ConsumeRegistrationQueue(ctx context.Context, queueName string, notificationExchange string) {
+func ConsumeLoginQueue(ctx context.Context, queueName string, notificationExchange string) {
 	msgs, err := config.RabbitMQCh.Consume(
 		queueName, // Queue name
 		"",
@@ -42,25 +42,27 @@ func ConsumeRegistrationQueue(ctx context.Context, queueName string, notificatio
 
 				// Process the registration
 				success := true
-				message := "Registration successful"
-				if err := services.ProcessUserRegistration(request.Username, request.Password); err != nil {
+				message := "Login successful"
+				token, err := services.ProcessUserLogin(request.Username, request.Password)
+				if err != nil {
 					success = false
-					message = "Registration failed: " + err.Error()
+					message = "Login failed: " + err.Error()
 				}
 
 				// Publish notification with UUID as the routing key
-				publishRegistrationNotification(notificationExchange, request.UUID, success, message)
+				publishLoginNotification(notificationExchange, request.UUID, success, message, token)
 			}
 		}
 	}()
 }
 
-// publishRegistrationNotification sends the notification to the notification exchange
-func publishRegistrationNotification(exchangeName, uuid string, success bool, message string) {
-	notification := types.RegistrationResponse{
+// publishLoginNotification sends the notification to the notification exchange
+func publishLoginNotification(exchangeName, uuid string, success bool, message, token string) {
+	notification := types.LoginResponse{
 		UUID:    uuid,
 		Success: success,
 		Message: message,
+		Token:   token,
 	}
 
 	body, err := json.Marshal(notification)

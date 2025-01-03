@@ -2,15 +2,15 @@ package services
 
 import (
 	"errors"
-	"log"
 
 	"instant-messaging-app/config"
 	"instant-messaging-app/models"
+	"instant-messaging-app/utils"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-func ProcessUserRegistration(username string, password string) error {
+func ProcessUserRegistration(username, password string) error {
 	// Check if the user already exists
 	var existingUser models.User
 	if err := config.DB.Where("username = ?", username).First(&existingUser).Error; err == nil {
@@ -33,7 +33,26 @@ func ProcessUserRegistration(username string, password string) error {
 	return config.DB.Create(&user).Error
 }
 
-func NotifyUnauthenticatedClient(uuid, message string) {
-	// Logic to notify WebSocket client
-	log.Printf("Notifying client %s: %s", uuid, message)
+
+// Pr authentifie un utilisateur et retourne un token
+func ProcessUserLogin(username, password string) (string, error) {
+	var user models.User
+
+	// Vérifie si l'utilisateur existe
+	if err := config.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		return "", errors.New("user not found")
+	}
+
+	// Vérifie le mot de passe
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return "", errors.New("invalid password")
+	}
+
+	// Génère un token JWT
+	tokenString, err := utils.GenerateJWT(user.ID, user.Username)
+	if err != nil {
+		return "", errors.New("failed to generate token")
+	}
+
+	return tokenString, nil
 }
