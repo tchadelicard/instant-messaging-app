@@ -1,5 +1,9 @@
 package types
 
+import (
+	"instant-messaging-app/api/dtos"
+)
+
 type AuthenicationRequest struct {
 	UUID     string `json:"uuid"`
 	Username string `json:"username"`
@@ -17,4 +21,23 @@ type LoginResponse struct {
 	Success	bool   `json:"success"`
 	Message string `json:"message"`
 	Token	string `json:"token"`
+}
+
+// Notification represents the generic notification structure
+type Notification struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+type GetUsersRequest struct {
+	UserID 	string	`json:"user_id"`
+}
+
+type GetUsersResponse struct {
+	Users	[]dtos.UserDTO	`json:"users"`
+}
+
+type TokenRequest struct {
+	Type	string	`json:"type"`
+	Token	string	`json:"token"`
 }

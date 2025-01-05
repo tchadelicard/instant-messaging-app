@@ -8,8 +8,6 @@ import (
 	"instant-messaging-app/config"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // ConsumeRegistrationQueue listens to registration requests and processes them
@@ -48,40 +46,13 @@ func ConsumeRegistrationQueue(ctx context.Context, queueName string, notificatio
 					message = "Registration failed: " + err.Error()
 				}
 
-				// Publish notification with UUID as the routing key
-				publishRegistrationNotification(notificationExchange, request.UUID, success, message)
+				// Publish notification with the message type
+				PublishNotification(notificationExchange, request.UUID, "registration_response", types.RegistrationResponse{
+					UUID:    request.UUID,
+					Success: success,
+					Message: message,
+				})
 			}
 		}
 	}()
-}
-
-// publishRegistrationNotification sends the notification to the notification exchange
-func publishRegistrationNotification(exchangeName, uuid string, success bool, message string) {
-	notification := types.RegistrationResponse{
-		UUID:    uuid,
-		Success: success,
-		Message: message,
-	}
-
-	body, err := json.Marshal(notification)
-	if err != nil {
-		log.Printf("Failed to marshal notification for UUID %s: %v", uuid, err)
-		return
-	}
-
-	err = config.RabbitMQCh.Publish(
-		exchangeName, // Exchange name
-		uuid,         // Routing key
-		false,        // Mandatory
-		false,        // Immediate
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		},
-	)
-	if err != nil {
-		log.Printf("Failed to publish notification for UUID %s: %v", uuid, err)
-	} else {
-		log.Printf("Notification published for UUID %s: %s", uuid, message)
-	}
 }

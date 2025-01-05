@@ -13,8 +13,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// StartUserService starts the UserService daemon
 func StartUserService() {
-	// Load .env file
+	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -28,7 +29,7 @@ func StartUserService() {
 	config.SetupRabbitMQ()
 	defer config.CleanupRabbitMQ()
 
-	// Declare the direct exchange for registration and login
+	// Declare the direct exchange for registration, login, and user queries
 	config.InitDirectRabbitMQExchange("user_direct_exchange")
 
 	// Declare and bind the registration queue
@@ -41,11 +42,17 @@ func StartUserService() {
 	config.InitQueue(loginQueue)
 	config.BindQueueToExchange(loginQueue, "user_direct_exchange", "login")
 
+	// Declare and bind the getUsers queue
+	getUsersQueue := "user_service_get_users_queue"
+	config.InitQueue(getUsersQueue)
+	config.BindQueueToExchange(getUsersQueue, "user_direct_exchange", "getUsers")
+
 	// Declare the notification exchange
 	config.InitDirectRabbitMQExchange("notification_exchange")
 
 	// Create a context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Handle system signals for shutdown
 	go func() {
@@ -57,10 +64,22 @@ func StartUserService() {
 	}()
 
 	// Start consuming registration requests
-	go handlers.ConsumeRegistrationQueue(ctx, registrationQueue, "notification_exchange")
+	go func() {
+		log.Println("Starting consumer for registration queue...")
+		handlers.ConsumeRegistrationQueue(ctx, registrationQueue, "notification_exchange")
+	}()
 
 	// Start consuming login requests
-	go handlers.ConsumeLoginQueue(ctx, loginQueue, "notification_exchange")
+	go func() {
+		log.Println("Starting consumer for login queue...")
+		handlers.ConsumeLoginQueue(ctx, loginQueue, "notification_exchange")
+	}()
+
+	// Start consuming getUsers requests
+	go func() {
+		log.Println("Starting consumer for getUsers queue...")
+		handlers.ConsumeGetUsersQueue(ctx, getUsersQueue, "notification_exchange")
+	}()
 
 	// Block until context is canceled
 	<-ctx.Done()

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaSearch, FaPaperPlane } from "react-icons/fa";
-import axiosInstance from "../api/axiosInstance";
 import { User, Message } from "../types";
 
 const Chat: React.FC = () => {
@@ -11,74 +10,136 @@ const Chat: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
 
   const navigate = useNavigate();
   const currentUserId = parseInt(localStorage.getItem("user_id") || "0", 10);
+  const token = localStorage.getItem("token");
+  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const validateToken = async () => {
-      const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found. Redirecting to login.");
+      navigate("/login");
+      return;
+    }
 
-      if (!token) {
-        navigate("/login");
-        return;
-      }
+    const connectWebSocket = () => {
+      const ws = new WebSocket("ws://localhost:8080/ws/auth");
+      socketRef.current = ws;
 
-      try {
-        axiosInstance.defaults.headers.common[
-          "Authorization"
-        ] = `Bearer ${token}`;
-        await axiosInstance.get("/users/self");
-        fetchUsers();
-        setLoading(false);
-      } catch {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user_id");
-        localStorage.removeItem("username");
-        navigate("/login");
-      }
+      ws.onopen = () => {
+        console.log("WebSocket connected. Sending token...");
+        ws.send(JSON.stringify({ type: "auth", token: token }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("WebSocket message received:", data);
+
+        switch (data.type) {
+          case "auth":
+            if (data.success) {
+              console.log("WebSocket authenticated successfully.");
+              setAuthenticated(true);
+              fetchUsers(); // Fetch users after authentication
+              setLoading(false);
+            } else {
+              console.error("WebSocket authentication failed:", data.message);
+              localStorage.clear();
+              navigate("/login");
+            }
+            break;
+
+          case "get_users_response":
+            console.log("Users received:", data.data.users);
+            setUsers(data.data.users || []);
+            restoreSelectedUser(data.data.users); // Restore the previously selected user
+            break;
+
+          case "message":
+            console.log("Message received:", data.message);
+            setMessages((prev) => [...prev, data.message]);
+            break;
+
+          case "error":
+            console.error("Error from WebSocket:", data.message);
+            break;
+
+          default:
+            console.log(data);
+            console.warn("Unknown message type:", data.type);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket disconnected.");
+        setAuthenticated(false);
+      };
+
+      ws.onerror = (event) => {
+        console.error("WebSocket encountered an error:", event);
+      };
     };
 
-    validateToken();
-  }, [navigate]);
+    connectWebSocket();
 
-  const fetchUsers = async () => {
-    try {
-      const response = await axiosInstance.get<User[]>("/users");
-      setUsers(response.data || []);
-    } catch (err) {
-      console.error("Failed to fetch users:", err);
-    }
+    return () => {
+      console.log("Cleaning up WebSocket connection...");
+      socketRef.current?.close();
+    };
+  }, [token, navigate]);
+
+  const fetchUsers = () => {
+    console.log("Fetching users via WebSocket...");
+    socketRef.current?.send(
+      JSON.stringify({
+        type: "getUsers",
+      })
+    );
   };
 
-  const fetchMessages = async (userId: number) => {
-    try {
-      const response = await axiosInstance.get<Message[]>(
-        `/messages/${userId}`
+  const restoreSelectedUser = (users: User[]) => {
+    const storedUserId = localStorage.getItem("selected_user_id");
+    if (storedUserId) {
+      const restoredUser = users.find(
+        (user) => user.id === parseInt(storedUserId, 10)
       );
-      setMessages(response.data || []);
-    } catch (err) {
-      console.error("Failed to fetch messages:", err);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (message.trim() && selectedUser) {
-      try {
-        const newMessage = {
-          content: message,
-          receiver_id: selectedUser.id,
-        };
-        const response = await axiosInstance.post<Message>(
-          `/messages/${selectedUser.id}`,
-          newMessage
-        );
-        setMessages((prev) => [...prev, response.data]);
-        setMessage("");
-      } catch (err) {
-        console.error("Failed to send message:", err);
+      if (restoredUser) {
+        setSelectedUser(restoredUser);
+        fetchMessages(restoredUser.id);
       }
     }
+  };
+
+  const fetchMessages = (userId: number) => {
+    console.log(`Fetching messages for user ${userId} via WebSocket...`);
+    socketRef.current?.send(
+      JSON.stringify({
+        type: "getMessages",
+        user_id: userId,
+      })
+    );
+  };
+
+  const handleSendMessage = () => {
+    if (socketRef.current && message.trim() && selectedUser) {
+      const newMessage = {
+        type: "sendMessage",
+        content: message,
+        receiver_id: selectedUser.id,
+      };
+      console.log("Sending message:", newMessage);
+      socketRef.current.send(JSON.stringify(newMessage));
+      setMessage("");
+    }
+  };
+
+  const handleUserSelection = (user: User) => {
+    setSelectedUser(user);
+    setMessages([]); // Clear messages when switching users
+    localStorage.setItem("selected_user_id", user.id.toString()); // Save selected user in localStorage
+    fetchMessages(user.id);
   };
 
   if (loading) {
@@ -118,10 +179,7 @@ const Chat: React.FC = () => {
                 className={`flex items-center p-3 border-b border-gray-200 hover:bg-gray-200 cursor-pointer transition duration-150 ease-in-out ${
                   selectedUser?.id === user.id ? "bg-indigo-200" : ""
                 }`}
-                onClick={() => {
-                  setSelectedUser(user);
-                  fetchMessages(user.id); // Fetch messages here
-                }}
+                onClick={() => handleUserSelection(user)}
               >
                 <img
                   src={`https://picsum.photos/50/50?random=${user.id}`} // Replace with user.avatar if available

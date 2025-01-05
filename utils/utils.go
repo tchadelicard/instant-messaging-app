@@ -53,3 +53,29 @@ func GenerateUniqueID() string {
 func GenerateUUID() string {
 	return uuid.New().String()
 }
+
+// validateJWT validates the JWT token and extracts the user ID
+func ValidateJWT(tokenString string) (uint, error) {
+	// Parse the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validate the signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return GetJWTSecret(), nil
+	})
+	if err != nil {
+		return 0, errors.New("failed to parse token")
+	}
+
+	// Extract claims
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// Retrieve user ID from claims
+		userID, ok := claims["user_id"].(float64)
+		if !ok {
+			return 0, errors.New("invalid claims: user_id not found")
+		}
+		return uint(userID), nil
+	}
+	return 0, errors.New("invalid token")
+}
