@@ -50,3 +50,13 @@ type GetSelfRequest struct {
 type GetSelfResponse struct {
 	User	dtos.UserDTO	`json:"user"`
 }
+
+type GetMessagesRequest struct {
+	UUID 		string	`json:"uuid"`
+	UserID		uint	`json:"user_id"`
+	ReceiverID	uint	`json:"receiver_id"`
+}
+
+type GetMessagesResponse struct {
+	Messages	[]dtos.MessageDTO	`json:"messages"`
+}

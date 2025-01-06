@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"instant-messaging-app/config"
 	"instant-messaging-app/dtos"
+	"instant-messaging-app/message/services"
 	"instant-messaging-app/types"
-	"instant-messaging-app/user/services"
 	"instant-messaging-app/utils"
 	"log"
 )
@@ -30,25 +30,26 @@ func ConsumeGetMessagesQueue(ctx context.Context, queueName string, notification
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Stopping getUsers queue consumption...")
+				log.Println("Stopping getMessages queue consumption...")
 				return
 			case msg := <-msgs:
-				var request types.GetUsersRequest
+				var request types.GetMessagesRequest
 				if err := json.Unmarshal(msg.Body, &request); err != nil {
-					log.Printf("Failed to unmarshal getUsers request: %v", err)
+					log.Printf("Failed to unmarshal getMessages request: %v", err)
 					continue
 				}
 
 				// Fetch users from the database
-				users, err := services.GetAllUsers()
+				log.Printf("Fetching messages between %v and %v", request.UserID, request.ReceiverID)
+				messages, err := services.GetMessagesBetweenUsers(request.UserID, request.ReceiverID)
 				if err != nil {
-					log.Printf("Failed to fetch users for user_id %s: %v", request.UUID, err)
+					log.Printf("Failed to fetch messages for user id: %s: %v", request.UUID, err)
 					continue
 				}
 
 				// Publish notification with the message type
-				utils.PublishNotification(notificationExchange, request.UUID, "get_users_response", types.GetUsersResponse{
-					Users: dtos.ToUserDTOs(users),
+				utils.PublishNotification(notificationExchange, request.UUID, "get_messages_response", types.GetMessagesResponse{
+					Messages: dtos.ToMessageDTOs(messages),
 				})
 
 			}

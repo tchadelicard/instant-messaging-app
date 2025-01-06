@@ -70,11 +70,11 @@ func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, uui
 			return sendErrorResponse(conn, "Unauthorized request: getSelf requires authentication")
 		}
 		return handleGetSelf(conn, uuid, userID)
-	//case "getMessages":
-	//	if !isAuthenticated {
-	//		return sendErrorResponse(conn, "Unauthorized request: getMessages requires authentication")
-	//	}
-	//	return handleGetMessages(conn, rawMessage)
+	case "getMessages":
+		if userID == 0 {
+			return sendErrorResponse(conn, "Unauthorized request: getMessages requires authentication")
+		}
+		return handleGetMessages(conn, uuid, userID, rawMessage)
 	default:
 		return sendErrorResponse(conn, fmt.Sprintf("Unknown message type: %s", baseMessage.Type))
 	}
@@ -82,7 +82,6 @@ func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, uui
 
 // handleGetUsers retrieves the list of users and sends them to the WebSocket client
 func handleGetUsers(conn *websocket.Conn, uuid string) error {
-	// Fetch users from the database
 	err := services.PublishGetUsers(uuid)
 	if err != nil {
 		return sendErrorResponse(conn, fmt.Sprintf("Failed to retrieve users: %v", err))
@@ -92,8 +91,24 @@ func handleGetUsers(conn *websocket.Conn, uuid string) error {
 }
 
 func handleGetSelf(conn *websocket.Conn, uuid string, userID uint) error {
-	// Fetch users from the database
 	err := services.PublishGetSelf(uuid, userID)
+	if err != nil {
+		return sendErrorResponse(conn, fmt.Sprintf("Failed to retrieve users: %v", err))
+	}
+
+	return nil
+}
+
+func handleGetMessages(conn *websocket.Conn, uuid string, userID uint, message []byte) error {
+	// Parse the message to extract the recipient ID
+	var getMessagesRequest struct {
+		Type		string `json:"type"`
+		ReceiverID 	uint `json:"receiver_id"`
+	}
+	json.Unmarshal(message, &getMessagesRequest)
+
+	// Fetch users from the database
+	err := services.PublishGetMessages(uuid, userID, getMessagesRequest.ReceiverID)
 	if err != nil {
 		return sendErrorResponse(conn, fmt.Sprintf("Failed to retrieve users: %v", err))
 	}
@@ -195,6 +210,12 @@ func processMessage(message []byte, conn *websocket.Conn) error {
 		return sendMessageToWebSocket(conn, baseMessage)
 	case "get_self_response":
 		var selfResponse types.GetSelfResponse
+		if err := json.Unmarshal(baseMessage.Data, &selfResponse); err != nil {
+			return err
+		}
+		return sendMessageToWebSocket(conn, baseMessage)
+	case "get_messages_response":
+		var selfResponse types.GetMessagesResponse
 		if err := json.Unmarshal(baseMessage.Data, &selfResponse); err != nil {
 			return err
 		}

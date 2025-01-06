@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"instant-messaging-app/config"
-	"instant-messaging-app/user/handlers"
+	"instant-messaging-app/message/handlers"
 
 	"github.com/joho/godotenv"
 )
@@ -55,8 +55,8 @@ func StartMessageService() {
 
 	// Start consuming getUsers requests
 	go func() {
-		log.Println("Starting consumer for getUsers queue...")
-		handlers.ConsumeGetUsersQueue(ctx, getMessagesQueue, "notification_exchange")
+		log.Println("Starting consumer for getMessages queue...")
+		handlers.ConsumeGetMessagesQueue(ctx, getMessagesQueue, "notification_exchange")
 	}()
 
 	// Block until context is canceled
