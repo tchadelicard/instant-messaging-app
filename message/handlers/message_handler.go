@@ -7,6 +7,7 @@ import (
 	"instant-messaging-app/config"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
+	"instant-messaging-app/utils"
 	"log"
 )
 
@@ -41,12 +42,12 @@ func ConsumeGetMessagesQueue(ctx context.Context, queueName string, notification
 				// Fetch users from the database
 				users, err := services.GetAllUsers()
 				if err != nil {
-					log.Printf("Failed to fetch users for user_id %s: %v", request.UserID, err)
+					log.Printf("Failed to fetch users for user_id %s: %v", request.UUID, err)
 					continue
 				}
 
 				// Publish notification with the message type
-				PublishNotification(notificationExchange, request.UserID, "get_users_response", types.GetUsersResponse{
+				utils.PublishNotification(notificationExchange, request.UUID, "get_users_response", types.GetUsersResponse{
 					Users: dtos.ToUserDTOs(users),
 				})
 

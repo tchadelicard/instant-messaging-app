@@ -30,7 +30,7 @@ type Notification struct {
 }
 
 type GetUsersRequest struct {
-	UserID 	string	`json:"user_id"`
+	UUID 	string	`json:"uuid"`
 }
 
 type GetUsersResponse struct {
@@ -40,4 +40,13 @@ type GetUsersResponse struct {
 type TokenRequest struct {
 	Type	string	`json:"type"`
 	Token	string	`json:"token"`
+}
+
+type GetSelfRequest struct {
+	UUID 	string	`json:"uuid"`
+	UserID 	uint	`json:"user_id"`
+}
+
+type GetSelfResponse struct {
+	User	dtos.UserDTO	`json:"user"`
 }

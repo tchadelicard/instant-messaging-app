@@ -90,7 +90,7 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 			fmt.Println("Crash here.")
 
 			// Handle the WebSocket connection
-			handlers.HandleWebSocketConnection(conn, queueName, ctx, true)
+			handlers.HandleWebSocketConnection(conn, queueName, userID, ctx)
 		})(c)
 	})
 	// Non-authenticated WebSocket route (for registration and login)
@@ -113,13 +113,11 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 
 		// Open the WebSocket connection
 		return websocket.New(func(conn *websocket.Conn) {
-			handlers.HandleWebSocketConnection(conn, uuid, ctx, false)
+			handlers.HandleWebSocketConnection(conn, uuid, 0, ctx)
 		})(c)
 	})
 
 	// Protected routes
-	api.Get("/users", middlewares.Protected(), controllers.GetUsers)             // Retrieve all users
-	api.Get("/users/self", middlewares.Protected(), controllers.GetSelf)         // Retrieve the authenticated user
 	api.Get("/messages/:userId", middlewares.Protected(), controllers.GetMessages) // Retrieve messages
 	api.Post("/messages/:userId", middlewares.Protected(), controllers.SendMessage) // Send a message
 }

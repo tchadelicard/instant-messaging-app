@@ -47,6 +47,11 @@ func StartUserService() {
 	config.InitQueue(getUsersQueue)
 	config.BindQueueToExchange(getUsersQueue, "user_direct_exchange", "getUsers")
 
+	// Declare and bind the getUsers queue
+	getSelfQueue := "user_service_get_self_queue"
+	config.InitQueue(getSelfQueue)
+	config.BindQueueToExchange(getSelfQueue, "user_direct_exchange", "getSelf")
+
 	// Declare the notification exchange
 	config.InitDirectRabbitMQExchange("notification_exchange")
 
@@ -79,6 +84,12 @@ func StartUserService() {
 	go func() {
 		log.Println("Starting consumer for getUsers queue...")
 		handlers.ConsumeGetUsersQueue(ctx, getUsersQueue, "notification_exchange")
+	}()
+
+	// Start consuming getUsers requests
+	go func() {
+		log.Println("Starting consumer for getSelf queue...")
+		handlers.ConsumeGetSelfQueue(ctx, getSelfQueue, "notification_exchange")
 	}()
 
 	// Block until context is canceled

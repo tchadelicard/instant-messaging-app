@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import axiosInstance from "../api/axiosInstance";
 import { useNavigate } from "react-router-dom";
+import axiosInstance from "../api/axiosInstance";
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -13,20 +13,50 @@ const Login: React.FC = () => {
     const token = localStorage.getItem("token");
 
     if (token) {
-      axiosInstance
-        .get("/users/self", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((response) => {
-          const { id } = response.data;
+      const ws = new WebSocket("ws://localhost:8080/ws/auth");
+
+      ws.onopen = () => {
+        console.log("WebSocket connection opened for authenticated user.");
+        ws.send(JSON.stringify({ type: "auth", token }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "auth" && data.success) {
+          console.log("Authenticated successfully.");
+          ws.send(JSON.stringify({ type: "getSelf" }));
+        } else if (data.type === "get_self_response") {
+          const { id, username } = data.data.user;
+
+          // Save the user ID and username
           localStorage.setItem("user_id", id.toString());
+          localStorage.setItem("username", username);
+
           navigate("/chat");
-        })
-        .catch(() => {
+        } else if (data.type === "error") {
+          console.error("Error from WebSocket:", data.message);
           localStorage.removeItem("token");
           localStorage.removeItem("user_id");
           localStorage.removeItem("username");
-        });
+        }
+      };
+
+      ws.onerror = () => {
+        console.error("WebSocket error occurred.");
+        localStorage.removeItem("token");
+        localStorage.removeItem("user_id");
+        localStorage.removeItem("username");
+        navigate("/login");
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed.");
+      };
+
+      return () => {
+        ws.close();
+      };
     }
   }, [navigate]);
 
@@ -45,7 +75,7 @@ const Login: React.FC = () => {
       const { uuid } = response.data;
 
       // Establish WebSocket connection using the UUID
-      const ws = new WebSocket(`ws://localhost:8080/ws/${uuid}`); // Replace with your WebSocket endpoint
+      const ws = new WebSocket(`ws://localhost:8080/ws/${uuid}`);
 
       ws.onopen = () => {
         console.log("WebSocket connection opened for UUID:", uuid);
@@ -55,27 +85,49 @@ const Login: React.FC = () => {
         const data = JSON.parse(event.data);
 
         if (data.success) {
-          // Save the token and set the default Authorization header
+          // Save the token
           localStorage.setItem("token", data.token);
-          axiosInstance.defaults.headers.common[
-            "Authorization"
-          ] = `Bearer ${data.token}`;
 
-          try {
-            // Fetch user_id from /users/self
-            const selfResponse = await axiosInstance.get("/users/self");
-            const { id } = selfResponse.data;
+          // Reconnect to the authenticated WebSocket
+          const authWs = new WebSocket("ws://localhost:8080/ws/auth");
 
-            // Store user_id and username in localStorage
-            localStorage.setItem("user_id", id.toString());
-            localStorage.setItem("username", username);
+          authWs.onopen = () => {
+            console.log("Authenticated WebSocket connection opened.");
+            authWs.send(JSON.stringify({ type: "auth", token: data.token }));
+          };
 
-            navigate("/chat");
-          } catch (err) {
-            setError("Failed to fetch user information");
-          }
+          authWs.onmessage = (authEvent) => {
+            const authData = JSON.parse(authEvent.data);
+
+            if (authData.type === "auth" && authData.success) {
+              console.log("Authenticated successfully.");
+              authWs.send(JSON.stringify({ type: "getSelf" }));
+            } else if (authData.type === "get_self_response") {
+              console.log("Received user data:", authData.data);
+              const { id, username } = authData.data.user;
+
+              // Save user ID and username
+              localStorage.setItem("user_id", id.toString());
+              localStorage.setItem("username", username);
+
+              navigate("/chat");
+            } else if (authData.type === "error") {
+              setError(authData.message || "Failed to authenticate.");
+            }
+          };
+
+          authWs.onerror = () => {
+            setError("Error during WebSocket authentication.");
+          };
+
+          authWs.onclose = () => {
+            console.log("Authenticated WebSocket connection closed.");
+          };
+        } else if (!data.success) {
+          setError(data.message || "Login failed.");
         } else {
-          setError(data.message || "Login failed");
+          console.log("Unexpected response from WebSocket:", data);
+          setError("Unexpected response from WebSocket.");
         }
 
         ws.close();
@@ -83,15 +135,15 @@ const Login: React.FC = () => {
       };
 
       ws.onerror = () => {
-        setError("WebSocket error occurred");
+        setError("WebSocket error occurred.");
         setLoading(false);
       };
 
       ws.onclose = () => {
-        console.log("WebSocket connection closed");
+        console.log("WebSocket connection closed.");
       };
     } catch (err: any) {
-      setError(err.response?.data?.error || "Something went wrong");
+      setError(err.response?.data?.error || "Something went wrong.");
       setLoading(false);
     }
   };

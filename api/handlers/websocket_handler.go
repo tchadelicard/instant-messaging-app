@@ -14,40 +14,40 @@ import (
 )
 
 // HandleWebSocketConnection manages the WebSocket connection and integrates it with RabbitMQ
-func HandleWebSocketConnection(conn *websocket.Conn, identifier string, ctx context.Context, isAuthenticated bool) {
+func HandleWebSocketConnection(conn *websocket.Conn, uuid string, userID uint, ctx context.Context) {
 	defer func() {
 		conn.Close()
 
 		// Delete the queue when the WebSocket is closed
-		if err := config.CleanupQueue(identifier); err != nil {
-			log.Printf("Failed to delete queue %s: %v", identifier, err)
+		if err := config.CleanupQueue(uuid); err != nil {
+			log.Printf("Failed to delete queue %s: %v", uuid, err)
 		} else {
-			log.Printf("Queue %s deleted successfully", identifier)
+			log.Printf("Queue %s deleted successfully", uuid)
 		}
 	}()
 
-	log.Printf("WebSocket connection established for identifier: %s", identifier)
+	log.Printf("WebSocket connection established for identifier: %s", uuid)
 
 	// Start consuming messages for this WebSocket connection
-	go consumeNotifications(ctx, identifier, conn)
+	go consumeNotifications(ctx, uuid, conn)
 
 	// Keep the WebSocket connection alive
 	for {
 		_, rawMessage, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("WebSocket connection closed for identifier: %s", identifier)
+			log.Printf("WebSocket connection closed for identifier: %s", uuid)
 			break
 		}
 
 		// Handle the incoming message
-		if err := handleIncomingWebSocketMessage(conn, rawMessage, identifier, isAuthenticated); err != nil {
-			log.Printf("Failed to handle message for identifier %s: %v", identifier, err)
+		if err := handleIncomingWebSocketMessage(conn, rawMessage, uuid, userID); err != nil {
+			log.Printf("Failed to handle message for identifier %s: %v", uuid, err)
 		}
 	}
 }
 
 // handleIncomingWebSocketMessage parses and routes the incoming WebSocket message
-func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, identifier string, isAuthenticated bool) error {
+func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, uuid string, userID uint) error {
 	// Generic message format with a type field
 	var baseMessage struct {
 		Type string `json:"type"`
@@ -61,10 +61,15 @@ func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, ide
 	// Route the message based on its type
 	switch baseMessage.Type {
 	case "getUsers":
-		if !isAuthenticated {
+		if userID == 0 {
 			return sendErrorResponse(conn, "Unauthorized request: getUsers requires authentication")
 		}
-		return handleGetUsers(conn, identifier)
+		return handleGetUsers(conn, uuid)
+	case "getSelf":
+		if userID == 0 {
+			return sendErrorResponse(conn, "Unauthorized request: getSelf requires authentication")
+		}
+		return handleGetSelf(conn, uuid, userID)
 	//case "getMessages":
 	//	if !isAuthenticated {
 	//		return sendErrorResponse(conn, "Unauthorized request: getMessages requires authentication")
@@ -76,9 +81,19 @@ func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, ide
 }
 
 // handleGetUsers retrieves the list of users and sends them to the WebSocket client
-func handleGetUsers(conn *websocket.Conn, userID string) error {
+func handleGetUsers(conn *websocket.Conn, uuid string) error {
 	// Fetch users from the database
-	err := services.PublishGetUsers(userID)
+	err := services.PublishGetUsers(uuid)
+	if err != nil {
+		return sendErrorResponse(conn, fmt.Sprintf("Failed to retrieve users: %v", err))
+	}
+
+	return nil
+}
+
+func handleGetSelf(conn *websocket.Conn, uuid string, userID uint) error {
+	// Fetch users from the database
+	err := services.PublishGetSelf(uuid, userID)
 	if err != nil {
 		return sendErrorResponse(conn, fmt.Sprintf("Failed to retrieve users: %v", err))
 	}
@@ -175,7 +190,12 @@ func processMessage(message []byte, conn *websocket.Conn) error {
 	case "get_users_response":
 		var usersResponse types.GetUsersResponse
 		if err := json.Unmarshal(baseMessage.Data, &usersResponse); err != nil {
-			log.Println("I'm here")
+			return err
+		}
+		return sendMessageToWebSocket(conn, baseMessage)
+	case "get_self_response":
+		var selfResponse types.GetSelfResponse
+		if err := json.Unmarshal(baseMessage.Data, &selfResponse); err != nil {
 			return err
 		}
 		return sendMessageToWebSocket(conn, baseMessage)

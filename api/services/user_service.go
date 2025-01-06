@@ -12,10 +12,10 @@ import (
 )
 
 
-func PublishGetUsers(userID string) error {
+func PublishGetUsers(uuid string) error {
 	// Define the registration request payload
 	request := types.GetUsersRequest{
-		UserID: userID,
+		UUID: uuid,
 	}
 
 	// Marshal the request to JSON
@@ -41,7 +41,41 @@ func PublishGetUsers(userID string) error {
 		return fmt.Errorf("failed to publish getUsers request")
 	}
 
-	log.Printf("Published getUsers request for userID %s", userID)
+	log.Printf("Published getUsers request for userID %s", uuid)
+	return nil
+}
+
+func PublishGetSelf(uuid string, userID uint) error {
+	// Define the registration request payload
+	request := types.GetSelfRequest{
+		UUID: uuid,
+		UserID: userID,
+	}
+
+	// Marshal the request to JSON
+	body, err := json.Marshal(request)
+	if err != nil {
+		log.Printf("Failed to marshal registration request: %v", err)
+		return fmt.Errorf("failed to marshal registration request")
+	}
+
+	// Publish the message to the "user_direct_exchange" with the routing key "registration"
+	err = config.RabbitMQCh.Publish(
+		"user_direct_exchange", // Exchange name
+		"getSelf",         // Routing key
+		false,                  // Mandatory
+		false,                  // Immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
+	if err != nil {
+		log.Printf("Failed to publish getSelf request: %v", err)
+		return fmt.Errorf("failed to publish getSelf request")
+	}
+
+	log.Printf("Published getSelf request for userID %s", uuid)
 	return nil
 }
 

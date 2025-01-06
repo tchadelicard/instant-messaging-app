@@ -36,13 +36,14 @@ const Register: React.FC = () => {
       const ws = new WebSocket(`ws://localhost:8080/ws/${uuid}`);
       ws.onopen = () => console.log("WebSocket connection established");
       ws.onmessage = (event) => {
-        const message = event.data;
-        setSuccess(message);
+        const data = JSON.parse(event.data);
+        console.log(data);
+        setSuccess(data.message);
         setLoading(false);
         ws.close();
 
         // Redirect to login page after successful registration
-        if (message === "Registration successful") {
+        if (data.message === "Registration successful") {
           setTimeout(() => navigate("/login"), 2000);
         }
       };
