@@ -1,7 +1,7 @@
 package types
 
 import (
-	"instant-messaging-app/api/dtos"
+	"instant-messaging-app/dtos"
 )
 
 type AuthenicationRequest struct {

@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"instant-messaging-app/api/dtos"
 	"instant-messaging-app/config"
+	"instant-messaging-app/dtos"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
 	"instant-messaging-app/utils"

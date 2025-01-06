@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"instant-messaging-app/api/dtos"
 	"instant-messaging-app/api/services"
+	"instant-messaging-app/dtos"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
