@@ -68,3 +68,39 @@ func PublishGetMessages(uuid string, userID, receiverID uint) error {
 	log.Printf("Published getMessages request for userID %v", userID)
 	return nil
 }
+
+func PublishSendMessage(uuid string, userID, receiverID uint, content string) error {
+	// Define the registration request payload
+	request := types.SendMessageRequest{
+		UUID: uuid,
+		UserID: userID,
+		ReceiverID: receiverID,
+		Content: content,
+	}
+
+	// Marshal the request to JSON
+	body, err := json.Marshal(request)
+	if err != nil {
+		log.Printf("Failed to marshal GetMessagesRequest: %v", err)
+		return fmt.Errorf("failed to marshal GetMessagesRequest")
+	}
+
+	// Publish the message to the "user_direct_exchange" with the routing key "registration"
+	err = config.RabbitMQCh.Publish(
+		"user_direct_exchange", // Exchange name
+		"sendMessage",         // Routing key
+		false,                  // Mandatory
+		false,                  // Immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
+	if err != nil {
+		log.Printf("Failed to publish sendMessage request: %v", err)
+		return fmt.Errorf("failed to publish sendMessage request")
+	}
+
+	log.Printf("Published sendMessage request for userID %v", userID)
+	return nil
+}

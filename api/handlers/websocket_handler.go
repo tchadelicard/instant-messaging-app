@@ -29,7 +29,7 @@ func HandleWebSocketConnection(conn *websocket.Conn, uuid string, userID uint, c
 	log.Printf("WebSocket connection established for identifier: %s", uuid)
 
 	// Start consuming messages for this WebSocket connection
-	go consumeNotifications(ctx, uuid, conn)
+	go consumeNotifications(ctx, uuid, userID, conn)
 
 	// Keep the WebSocket connection alive
 	for {
@@ -75,6 +75,11 @@ func handleIncomingWebSocketMessage(conn *websocket.Conn, rawMessage []byte, uui
 			return sendErrorResponse(conn, "Unauthorized request: getMessages requires authentication")
 		}
 		return handleGetMessages(conn, uuid, userID, rawMessage)
+	case "sendMessage":
+		if userID == 0 {
+			return sendErrorResponse(conn, "Unauthorized request: sendMessage requires authentication")
+		}
+		return handleSendMessage(uuid, userID, rawMessage)
 	default:
 		return sendErrorResponse(conn, fmt.Sprintf("Unknown message type: %s", baseMessage.Type))
 	}
@@ -116,6 +121,24 @@ func handleGetMessages(conn *websocket.Conn, uuid string, userID uint, message [
 	return nil
 }
 
+func handleSendMessage(uuid string, userID uint, message []byte) error {
+	// Parse the message to extract the recipient ID
+	var sendMessageRequest struct {
+		Type		string `json:"type"`
+		ReceiverID 	uint `json:"receiver_id"`
+		Content 	string `json:"content"`
+	}
+	json.Unmarshal(message, &sendMessageRequest)
+
+	// Fetch users from the database
+	err := services.PublishSendMessage(uuid, userID, sendMessageRequest.ReceiverID, sendMessageRequest.Content)
+	if err != nil {
+		return fmt.Errorf("Failed to send message: %v", err)
+	}
+
+	return nil
+}
+
 // sendErrorResponse sends an error response to the WebSocket client
 func sendErrorResponse(conn *websocket.Conn, errorMessage string) error {
 	response := struct {
@@ -129,25 +152,25 @@ func sendErrorResponse(conn *websocket.Conn, errorMessage string) error {
 	return sendMessageToWebSocket(conn, response)
 }
 
-func consumeNotifications(ctx context.Context, identifier string, conn *websocket.Conn) {
+func consumeNotifications(ctx context.Context, uuid string, userID uint, conn *websocket.Conn) {
 	// Create a new context specifically for this consumer
 	consumerCtx, cancel := context.WithCancel(ctx)
 
 	defer func() {
 		// Cleanup when the consumer exits
 		cancel()
-		log.Printf("Consumer cleanup completed for identifier: %s", identifier)
+		log.Printf("Consumer cleanup completed for identifier: %s", uuid)
 
 		// Delete the queue after the WebSocket is closed
-		if err := config.CleanupQueue(identifier); err != nil {
-			log.Printf("Failed to delete queue %s: %v", identifier, err)
+		if err := config.CleanupQueue(uuid); err != nil {
+			log.Printf("Failed to delete queue %s: %v", uuid, err)
 		} else {
-			log.Printf("Queue %s deleted successfully", identifier)
+			log.Printf("Queue %s deleted successfully", uuid)
 		}
 	}()
 
 	msgs, err := config.RabbitMQCh.Consume(
-		identifier, // Queue name
+		uuid, 		// Queue name
 		"",         // Consumer tag
 		true,       // Auto-acknowledge
 		false,      // Exclusive
@@ -156,7 +179,7 @@ func consumeNotifications(ctx context.Context, identifier string, conn *websocke
 		nil,
 	)
 	if err != nil {
-		log.Printf("Failed to start consumer for queue %s: %v", identifier, err)
+		log.Printf("Failed to start consumer for queue %s: %v", uuid, err)
 		return
 	}
 
@@ -164,19 +187,19 @@ func consumeNotifications(ctx context.Context, identifier string, conn *websocke
 	for {
 		select {
 		case <-consumerCtx.Done():
-			log.Printf("Consumer context canceled for identifier: %s", identifier)
+			log.Printf("Consumer context canceled for identifier: %s", uuid)
 			return
 		case msg := <-msgs:
 			// Process the message
-			if err := processMessage(msg.Body, conn); err != nil && len(msg.Body) > 0 {
-				log.Printf("Failed to process message for queue %s: %v", identifier, err)
+			if err := processMessage(userID, msg.Body, conn); err != nil && len(msg.Body) > 0 {
+				log.Printf("Failed to process message for queue %s: %v", uuid, err)
 			}
 		}
 	}
 }
 
 // processMessage routes and handles different types of messages
-func processMessage(message []byte, conn *websocket.Conn) error {
+func processMessage(userID uint, message []byte, conn *websocket.Conn) error {
 	// Generic message format with a type field and a data field
 	var baseMessage struct {
 		Type string          `json:"type"`
@@ -219,6 +242,16 @@ func processMessage(message []byte, conn *websocket.Conn) error {
 		if err := json.Unmarshal(baseMessage.Data, &selfResponse); err != nil {
 			return err
 		}
+		return sendMessageToWebSocket(conn, baseMessage)
+	case "send_message_response":
+		var selfResponse types.SendMessageResponse
+		if err := json.Unmarshal(baseMessage.Data, &selfResponse); err != nil {
+			return err
+		}
+		if selfResponse.Message.ReceiverID != userID && selfResponse.Message.SenderID != userID {
+			return nil
+		}
+		log.Printf("Recevied message: %s", selfResponse.Message.Content)
 		return sendMessageToWebSocket(conn, baseMessage)
 	default:
 		log.Printf("Unknown message type: %s", baseMessage.Type)

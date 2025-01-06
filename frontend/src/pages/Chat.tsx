@@ -16,6 +16,7 @@ const Chat: React.FC = () => {
   const currentUserId = parseInt(localStorage.getItem("user_id") || "0", 10);
   const token = localStorage.getItem("token");
   const socketRef = useRef<WebSocket | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null); // Add ref for chat container
 
   useEffect(() => {
     if (!token) {
@@ -46,28 +47,24 @@ const Chat: React.FC = () => {
               setLoading(false);
             } else {
               console.error("WebSocket authentication failed:", data.message);
-              localStorage.clear();
-              navigate("/login");
+              handleLogout();
             }
             break;
-
           case "get_users_response":
-            console.log("Users received:", data.data.users);
             setUsers(data.data.users || []);
-            restoreSelectedUser(data.data.users); // Restore the previously selected user
+            restoreSelectedUser(data.data.users);
             break;
-
           case "get_messages_response":
-            console.log("Message received:", data.data.messages);
             setMessages((prev) => [...prev, ...data.data.messages]);
             break;
-
+          case "send_message_response":
+            setMessages((prev) => [...prev, data.data.message]);
+            break;
           case "error":
             console.error("Error from WebSocket:", data.message);
             break;
 
           default:
-            console.log(data);
             console.warn("Unknown message type:", data.type);
         }
       };
@@ -90,8 +87,14 @@ const Chat: React.FC = () => {
     };
   }, [token, navigate]);
 
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   const fetchUsers = () => {
-    console.log("Fetching users via WebSocket...");
     socketRef.current?.send(
       JSON.stringify({
         type: "getUsers",
@@ -113,7 +116,6 @@ const Chat: React.FC = () => {
   };
 
   const fetchMessages = (userId: number) => {
-    console.log(`Fetching messages for user ${userId} via WebSocket...`);
     socketRef.current?.send(
       JSON.stringify({
         type: "getMessages",
@@ -129,7 +131,6 @@ const Chat: React.FC = () => {
         content: message,
         receiver_id: selectedUser.id,
       };
-      console.log("Sending message:", newMessage);
       socketRef.current.send(JSON.stringify(newMessage));
       setMessage("");
     }
@@ -137,9 +138,16 @@ const Chat: React.FC = () => {
 
   const handleUserSelection = (user: User) => {
     setSelectedUser(user);
-    setMessages([]); // Clear messages when switching users
-    localStorage.setItem("selected_user_id", user.id.toString()); // Save selected user in localStorage
+    setMessages([]);
+    localStorage.setItem("selected_user_id", user.id.toString());
     fetchMessages(user.id);
+  };
+
+  const handleLogout = () => {
+    console.log("Logging out...");
+    localStorage.clear(); // Clear user session data
+    socketRef.current?.close(); // Close WebSocket connection
+    navigate("/login"); // Redirect to login page
   };
 
   if (loading) {
@@ -169,10 +177,10 @@ const Chat: React.FC = () => {
         </div>
         <div className="flex-1 overflow-y-auto">
           {users
-            .filter((user) => user.id !== currentUserId) // Exclude current user
+            .filter((user) => user.id !== currentUserId)
             .filter((user) =>
               user.username.toLowerCase().includes(search.toLowerCase())
-            ) // Apply search filter
+            )
             .map((user) => (
               <div
                 key={user.id}
@@ -182,7 +190,7 @@ const Chat: React.FC = () => {
                 onClick={() => handleUserSelection(user)}
               >
                 <img
-                  src={`https://picsum.photos/50/50?random=${user.id}`} // Replace with user.avatar if available
+                  src={`https://picsum.photos/50/50?random=${user.id}`}
                   alt={user.username}
                   className="w-10 h-10 rounded-full mr-3"
                 />
@@ -192,6 +200,14 @@ const Chat: React.FC = () => {
               </div>
             ))}
         </div>
+        <div className="p-4 border-t border-gray-300">
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* Right column: Chat conversation */}
@@ -200,7 +216,7 @@ const Chat: React.FC = () => {
           <>
             <div className="bg-gray-100 bg-opacity-90 border-b border-gray-300 p-4 flex items-center">
               <img
-                src={`https://picsum.photos/50/50?random=${selectedUser.id}`} // Replace with selectedUser.avatar if available
+                src={`https://picsum.photos/50/50?random=${selectedUser.id}`}
                 alt={selectedUser.username}
                 className="w-10 h-10 rounded-full mr-3"
               />
@@ -208,7 +224,10 @@ const Chat: React.FC = () => {
                 {selectedUser.username}
               </span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div
+              ref={chatContainerRef}
+              className="flex-1 overflow-y-auto p-4 space-y-4"
+            >
               {messages.map((msg) => (
                 <div
                   key={msg.id}

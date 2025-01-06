@@ -37,6 +37,11 @@ func StartMessageService() {
 	config.InitQueue(getMessagesQueue)
 	config.BindQueueToExchange(getMessagesQueue, "user_direct_exchange", "getMessages")
 
+	// Declare and bind the sendMessage queue
+	sendMessageQueue := "message_service_send_message_queue"
+	config.InitQueue(sendMessageQueue)
+	config.BindQueueToExchange(sendMessageQueue, "user_direct_exchange", "sendMessage")
+
 	// Declare the notification exchange
 	config.InitDirectRabbitMQExchange("notification_exchange")
 
@@ -53,10 +58,16 @@ func StartMessageService() {
 		cancel()
 	}()
 
-	// Start consuming getUsers requests
+	// Start consuming getMessages requests
 	go func() {
 		log.Println("Starting consumer for getMessages queue...")
 		handlers.ConsumeGetMessagesQueue(ctx, getMessagesQueue, "notification_exchange")
+	}()
+
+	// Start consuming sendMessage requests
+	go func() {
+		log.Println("Starting consumer for sendMessage queue...")
+		handlers.ConsumeSendMessageQueue(ctx, sendMessageQueue, "notification_broadcast_exchange")
 	}()
 
 	// Block until context is canceled

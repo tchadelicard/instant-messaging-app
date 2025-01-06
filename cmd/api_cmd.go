@@ -32,6 +32,9 @@ func StartWebServer() {
 	// Declare the notification exchange
 	config.InitDirectRabbitMQExchange("notification_exchange")
 
+	// Declare the notification broadcast exchange
+	config.InitFanoutRabbitMQExchange("notification_broadcast_exchange")
+
 	// Create a context for managing graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

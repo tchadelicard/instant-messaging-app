@@ -60,3 +60,14 @@ type GetMessagesRequest struct {
 type GetMessagesResponse struct {
 	Messages	[]dtos.MessageDTO	`json:"messages"`
 }
+
+type SendMessageRequest struct {
+	UUID 		string	`json:"uuid"`
+	UserID		uint	`json:"user_id"`
+	ReceiverID	uint	`json:"receiver_id"`
+	Content		string	`json:"content"`
+}
+
+type SendMessageResponse struct {
+	Message	dtos.MessageDTO	`json:"message"`
+}

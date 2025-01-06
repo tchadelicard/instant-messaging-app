@@ -85,6 +85,22 @@ func InitDirectRabbitMQExchange(exchangeName string) {
 	log.Printf("Declared RabbitMQ direct exchange: %s", exchangeName)
 }
 
+func InitFanoutRabbitMQExchange(exchangeName string) {
+	err := RabbitMQCh.ExchangeDeclare(
+		exchangeName, // Exchange name
+		"fanout",     // Type
+		true,         // Durable
+		false,        // Auto-deleted
+		false,        // Internal
+		false,        // No-wait
+		nil,          // Arguments
+	)
+	if err != nil {
+		log.Fatalf("Failed to declare fanout exchange %s: %v", exchangeName, err)
+	}
+	log.Printf("Declared RabbitMQ fanout exchange: %s", exchangeName)
+}
+
 // CleanupRabbitMQ closes the RabbitMQ connection and channel
 func CleanupRabbitMQ() {
 	if RabbitMQCh != nil {

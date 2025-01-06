@@ -14,3 +14,14 @@ func GetMessagesBetweenUsers(senderID uint, receiverID uint) ([]models.Message, 
 		Find(&messages).Error
 	return messages, err
 }
+
+func CreateMessage(senderID uint, receiverID uint, content string) (models.Message, error) {
+	message := models.Message{
+		SenderID:   senderID,
+		ReceiverID: receiverID,
+		Content:    content,
+	}
+
+	err := config.DB.Create(&message).Error
+	return message, err
+}

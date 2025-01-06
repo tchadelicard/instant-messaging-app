@@ -2,7 +2,6 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
 	"instant-messaging-app/api/controllers"
 	"instant-messaging-app/api/handlers"
 	"instant-messaging-app/api/middlewares"
@@ -86,8 +85,18 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 				log.Printf("Failed to bind queue %s to exchange: %v", queueName, err)
 				return
 			}
-
-			fmt.Println("Crash here.")
+			// Bind the queue to the notification broadcast exchange
+			err = config.RabbitMQCh.QueueBind(
+				queueName,             // Queue name
+				"",             // Routing key
+				"notification_broadcast_exchange", // Exchange name
+				false,
+				nil,
+			)
+			if err != nil {
+				log.Printf("Failed to bind queue %s to exchange: %v", queueName, err)
+				return
+			}
 
 			// Handle the WebSocket connection
 			handlers.HandleWebSocketConnection(conn, queueName, userID, ctx)
