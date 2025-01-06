@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"instant-messaging-app/config"
+	"instant-messaging-app/types"
 	"log"
 	"os"
 	"strings"
@@ -10,6 +14,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/google/uuid"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func GenerateJWT(user_id uint, username string) (string, error) {
@@ -78,4 +84,38 @@ func ValidateJWT(tokenString string) (uint, error) {
 		return uint(userID), nil
 	}
 	return 0, errors.New("invalid token")
+}
+
+func PublishNotification(exchangeName, routingKey, notificationType string, data interface{}) {
+	// Create a typed notification
+	notification := types.Notification{
+		Type: notificationType,
+		Data: data,
+	}
+
+	// Marshal the notification into JSON
+	body, err := json.Marshal(notification)
+	if err != nil {
+		log.Printf("Failed to marshal notification: %v", err)
+		return
+	}
+
+	fmt.Println("Publishing message:", string(body))
+
+	// Publish the message to RabbitMQ
+	err = config.RabbitMQCh.Publish(
+		exchangeName, // Exchange name
+		routingKey,   // Routing key
+		false,        // Mandatory
+		false,        // Immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
+	if err != nil {
+		log.Printf("Failed to publish notification to exchange %s: %v", exchangeName, err)
+	} else {
+		log.Printf("Notification published to exchange %s with routing key %s", exchangeName, routingKey)
+	}
 }

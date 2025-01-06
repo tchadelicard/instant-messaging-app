@@ -30,6 +30,14 @@ func main() {
 					return nil
 				},
 			},
+			{
+				Name:  "message",
+				Usage: "Start the MessageService daemon",
+				Action: func(c *cli.Context) error {
+					cmd.StartMessageService()
+					return nil
+				},
+			},
 		},
 	}
 

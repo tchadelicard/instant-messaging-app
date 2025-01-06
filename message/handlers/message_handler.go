@@ -7,12 +7,11 @@ import (
 	"instant-messaging-app/config"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
-	"instant-messaging-app/utils"
 	"log"
 )
 
 // ConsumeGetUsersQueue listens to getUsers requests and processes them
-func ConsumeGetUsersQueue(ctx context.Context, queueName string, notificationExchange string) {
+func ConsumeGetMessagesQueue(ctx context.Context, queueName string, notificationExchange string) {
 	msgs, err := config.RabbitMQCh.Consume(
 		queueName, // Queue name
 		"",
@@ -47,7 +46,7 @@ func ConsumeGetUsersQueue(ctx context.Context, queueName string, notificationExc
 				}
 
 				// Publish notification with the message type
-				utils.PublishNotification(notificationExchange, request.UserID, "get_users_response", types.GetUsersResponse{
+				PublishNotification(notificationExchange, request.UserID, "get_users_response", types.GetUsersResponse{
 					Users: dtos.ToUserDTOs(users),
 				})
 

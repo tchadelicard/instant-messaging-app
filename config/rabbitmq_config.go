@@ -116,3 +116,13 @@ func QueueExists(queueName string) bool {
 	}
 	return true
 }
+
+func CleanupQueue(queueName string) error {
+	_, err := RabbitMQCh.QueueDelete(
+		queueName, // Queue name
+		false,     // IfUnused
+		false,     // IfEmpty
+		false,     // NoWait
+	)
+	return err
+}

@@ -58,7 +58,7 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 			conn.WriteMessage(websocket.TextMessage, []byte(`{"type": "auth", "success": true, "message": "Authenticated successfully"}`))
 
 			// Use the user_id as the identifier for the WebSocket
-			queueName := "user_" + fmt.Sprintf("%d", userID)
+			queueName := utils.GenerateUUID()
 
 			// Declare a queue for the authenticated user
 			_, err = config.RabbitMQCh.QueueDeclare(

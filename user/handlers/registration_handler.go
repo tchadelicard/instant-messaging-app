@@ -8,6 +8,7 @@ import (
 	"instant-messaging-app/config"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
+	"instant-messaging-app/utils"
 )
 
 // ConsumeRegistrationQueue listens to registration requests and processes them
@@ -47,7 +48,7 @@ func ConsumeRegistrationQueue(ctx context.Context, queueName string, notificatio
 				}
 
 				// Publish notification with the message type
-				PublishNotification(notificationExchange, request.UUID, "registration_response", types.RegistrationResponse{
+				utils.PublishNotification(notificationExchange, request.UUID, "registration_response", types.RegistrationResponse{
 					UUID:    request.UUID,
 					Success: success,
 					Message: message,

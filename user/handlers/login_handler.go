@@ -8,6 +8,7 @@ import (
 	"instant-messaging-app/config"
 	"instant-messaging-app/types"
 	"instant-messaging-app/user/services"
+	"instant-messaging-app/utils"
 )
 
 // ConsumeLoginQueue listens to login requests and processes them
@@ -49,7 +50,7 @@ func ConsumeLoginQueue(ctx context.Context, queueName string, notificationExchan
 				}
 
 				// Publish notification with the message type
-				PublishNotification(notificationExchange, request.UUID, "login_response", types.LoginResponse{
+				utils.PublishNotification(notificationExchange, request.UUID, "login_response", types.LoginResponse{
 					UUID:    request.UUID,
 					Success: success,
 					Message: message,

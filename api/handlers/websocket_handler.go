@@ -15,16 +15,20 @@ import (
 
 // HandleWebSocketConnection manages the WebSocket connection and integrates it with RabbitMQ
 func HandleWebSocketConnection(conn *websocket.Conn, identifier string, ctx context.Context, isAuthenticated bool) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
 
-	// Log the connection type
-	if isAuthenticated {
-		log.Printf("Authenticated WebSocket connection established for user_id: %s", identifier)
-	} else {
-		log.Printf("Unauthenticated WebSocket connection established for UUID: %s", identifier)
-	}
+		// Delete the queue when the WebSocket is closed
+		if err := config.CleanupQueue(identifier); err != nil {
+			log.Printf("Failed to delete queue %s: %v", identifier, err)
+		} else {
+			log.Printf("Queue %s deleted successfully", identifier)
+		}
+	}()
 
-	// Start consuming messages for the identifier (user_id or UUID)
+	log.Printf("WebSocket connection established for identifier: %s", identifier)
+
+	// Start consuming messages for this WebSocket connection
 	go consumeNotifications(ctx, identifier, conn)
 
 	// Keep the WebSocket connection alive
@@ -95,32 +99,47 @@ func sendErrorResponse(conn *websocket.Conn, errorMessage string) error {
 	return sendMessageToWebSocket(conn, response)
 }
 
-// consumeNotifications listens to RabbitMQ messages and sends them to the WebSocket client
-func consumeNotifications(ctx context.Context, queueName string, conn *websocket.Conn) {
+func consumeNotifications(ctx context.Context, identifier string, conn *websocket.Conn) {
+	// Create a new context specifically for this consumer
+	consumerCtx, cancel := context.WithCancel(ctx)
+
+	defer func() {
+		// Cleanup when the consumer exits
+		cancel()
+		log.Printf("Consumer cleanup completed for identifier: %s", identifier)
+
+		// Delete the queue after the WebSocket is closed
+		if err := config.CleanupQueue(identifier); err != nil {
+			log.Printf("Failed to delete queue %s: %v", identifier, err)
+		} else {
+			log.Printf("Queue %s deleted successfully", identifier)
+		}
+	}()
+
 	msgs, err := config.RabbitMQCh.Consume(
-		queueName, // Queue name
-		"",        // Consumer tag
-		true,      // Auto-acknowledge
-		false,     // Exclusive
-		false,     // No-local
-		false,     // No-wait
+		identifier, // Queue name
+		"",         // Consumer tag
+		true,       // Auto-acknowledge
+		false,      // Exclusive
+		false,      // No-local
+		false,      // No-wait
 		nil,
 	)
 	if err != nil {
-		log.Printf("Failed to start consumer for queue %s: %v", queueName, err)
+		log.Printf("Failed to start consumer for queue %s: %v", identifier, err)
 		return
 	}
 
+	// Listen for messages or context cancellation
 	for {
 		select {
-		case <-ctx.Done():
-			log.Printf("Stopping consumer for queue %s", queueName)
+		case <-consumerCtx.Done():
+			log.Printf("Consumer context canceled for identifier: %s", identifier)
 			return
 		case msg := <-msgs:
-			// Process the message based on its type
-			log.Println(string(msg.Body))
-			if err := processMessage(msg.Body, conn); err != nil {
-				log.Printf("Failed to process message for queue %s: %v", queueName, err)
+			// Process the message
+			if err := processMessage(msg.Body, conn); err != nil && len(msg.Body) > 0 {
+				log.Printf("Failed to process message for queue %s: %v", identifier, err)
 			}
 		}
 	}
