@@ -57,9 +57,9 @@ const Chat: React.FC = () => {
             restoreSelectedUser(data.data.users); // Restore the previously selected user
             break;
 
-          case "message":
-            console.log("Message received:", data.message);
-            setMessages((prev) => [...prev, data.message]);
+          case "get_messages_response":
+            console.log("Message received:", data.data.messages);
+            setMessages((prev) => [...prev, ...data.data.messages]);
             break;
 
           case "error":
@@ -117,7 +117,7 @@ const Chat: React.FC = () => {
     socketRef.current?.send(
       JSON.stringify({
         type: "getMessages",
-        user_id: userId,
+        receiver_id: userId,
       })
     );
   };
