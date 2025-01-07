@@ -26,13 +26,16 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 
 	// Authenticated WebSocket route (for chat and other interactions)
 	app.Get("/ws/auth", func(c *fiber.Ctx) error {
-		// Open the WebSocket connection
 		return websocket.New(func(conn *websocket.Conn) {
-			defer conn.Close()
+			// Create a cancellable context
+			ctx, cancel := context.WithCancel(context.Background())
+			defer func() {
+				cancel() // Cancel the context when the WebSocket connection is closed
+				conn.Close()
+			}()
 
 			// Read the initial message containing the JWT token
 			_, message, err := conn.ReadMessage()
-			log.Println(string(message))
 			if err != nil {
 				log.Println("Failed to read WebSocket message:", err)
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type": "error", "message": "Failed to read authentication token"}`))
@@ -40,15 +43,15 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 			}
 
 			var request types.TokenRequest
-			err = json.Unmarshal(message, &request)
-			if (err != nil) {
-				log.Printf("Failed to unmarshal request")
+			if err := json.Unmarshal(message, &request); err != nil {
+				log.Println("Failed to unmarshal request")
+				conn.WriteMessage(websocket.TextMessage, []byte(`{"type": "error", "message": "Invalid request format"}`))
 				return
 			}
 
 			userID, err := utils.ValidateJWT(request.Token)
 			if err != nil {
-				log.Printf("Invalid token: %v", err)
+				log.Println("Invalid token:", err)
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type": "error", "message": "Invalid authentication token"}`))
 				return
 			}
@@ -60,40 +63,25 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 			queueName := utils.GenerateUUID()
 
 			// Declare a queue for the authenticated user
-			_, err = config.RabbitMQCh.QueueDeclare(
-				queueName, // Queue name
-				true,      // Durable
-				true,      // Auto-delete (deleted when last consumer disconnects)
-				false,     // Exclusive
-				false,     // No-wait
-				nil,       // Arguments
-			)
-			if err != nil {
+			if _, err := config.RabbitMQCh.QueueDeclare(
+				queueName,
+				true,
+				true,
+				false,
+				false,
+				nil,
+			); err != nil {
 				log.Printf("Failed to declare queue for user_id %d: %v", userID, err)
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type": "error", "message": "Failed to initialize user queue"}`))
 				return
 			}
-			// Bind the queue to the notification exchange with the UUID as the routing key
-			err = config.RabbitMQCh.QueueBind(
-				queueName,             // Queue name
-				queueName,             // Routing key
-				"notification_exchange", // Exchange name
-				false,
-				nil,
-			)
-			if err != nil {
+
+			// Bind the queue to the exchanges
+			if err := config.RabbitMQCh.QueueBind(queueName, queueName, "notification_exchange", false, nil); err != nil {
 				log.Printf("Failed to bind queue %s to exchange: %v", queueName, err)
 				return
 			}
-			// Bind the queue to the notification broadcast exchange
-			err = config.RabbitMQCh.QueueBind(
-				queueName,             // Queue name
-				"",             // Routing key
-				"notification_broadcast_exchange", // Exchange name
-				false,
-				nil,
-			)
-			if err != nil {
+			if err := config.RabbitMQCh.QueueBind(queueName, "", "notification_broadcast_exchange", false, nil); err != nil {
 				log.Printf("Failed to bind queue %s to exchange: %v", queueName, err)
 				return
 			}
@@ -111,17 +99,20 @@ func SetupRoutes(app *fiber.App, ctx context.Context) {
 			})
 		}
 
-		log.Println("I'm here.")
-
-		// Check if the queue exists
 		if !config.QueueExists(uuid) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "Queue not found for UUID",
 			})
 		}
 
-		// Open the WebSocket connection
 		return websocket.New(func(conn *websocket.Conn) {
+			// Create a cancellable context
+			ctx, cancel := context.WithCancel(context.Background())
+			defer func() {
+				cancel() // Cancel the context when the WebSocket connection is closed
+				conn.Close()
+			}()
+
 			handlers.HandleWebSocketConnection(conn, uuid, 0, ctx)
 		})(c)
 	})
