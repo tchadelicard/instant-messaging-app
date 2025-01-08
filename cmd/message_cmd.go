@@ -17,7 +17,7 @@ import (
 func StartMessageService() {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("No .env file found. Using system environment variables.")
 	}
 
 	// Initialize the database

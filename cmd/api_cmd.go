@@ -19,7 +19,7 @@ import (
 func StartWebServer() {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("No .env file found. Using system environment variables.")
 	}
 
 	// Connect to the database
@@ -43,7 +43,7 @@ func StartWebServer() {
 	app := fiber.New()
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:5173",
+		AllowOrigins: "http://localhost:3000",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 

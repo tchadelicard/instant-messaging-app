@@ -10,7 +10,7 @@ const Chat: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
-  const [authenticated, setAuthenticated] = useState<boolean>(false);
+  //const [authenticated, setAuthenticated] = useState<boolean>(false);
 
   const navigate = useNavigate();
   const currentUserId = parseInt(localStorage.getItem("user_id") || "0", 10);
@@ -42,7 +42,7 @@ const Chat: React.FC = () => {
           case "auth":
             if (data.success) {
               console.log("WebSocket authenticated successfully.");
-              setAuthenticated(true);
+              //setAuthenticated(true);
               fetchUsers(); // Fetch users after authentication
               setLoading(false);
             } else {
@@ -71,7 +71,7 @@ const Chat: React.FC = () => {
 
       ws.onclose = () => {
         console.log("WebSocket disconnected.");
-        setAuthenticated(false);
+        //setAuthenticated(false);
       };
 
       ws.onerror = (event) => {
